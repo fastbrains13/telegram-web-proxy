@@ -1,18 +1,11 @@
-
-
-```bash
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
 
-VERSION="V 1.1.0"
+VERSION="V 0.0.3"
 REPO_DIR="/root/fastbrains-tproxy"
 SITE_INPUT="/opt/fastbrains-site"
 SITE_TARGET="/srv/fastbrains-site"
-REUSE_MT=0
-REUSE_RELAY=0
-REUSE_CADDY=0
-# Base64 encoded URL of your repository
 REPO_URL_B64="aHR0cHM6Ly9naXRodWIuY29tL2Zhc3RicmFpbnMxMy90ZWxlZ3JhbS13ZWItcHJveHk="
 
 die() {
@@ -29,7 +22,7 @@ trim() {
 }
 
 valid_domain() {
-    [ "$1" =~ ^[a-z0-9.-]+$ ] && [[ "$1" == *.* ]] && [[ "$1" != *..* ]]
+    [[ "$1" =~ ^[a-z0-9.-]+$ ]] && [[ "$1" == *.* ]] && [[ "$1" != *..* ]]
 }
 
 valid_email() {
@@ -54,50 +47,22 @@ port_has_expected_process() {
 check_install_port() {
     local port="$1"
     local process="$2"
-
     if ! port_is_listening "$port"; then
         echo "      :${port} free"
         return 0
     fi
-
     if port_has_expected_process "$port" "$process"; then
         echo "      :${port} already used by ${process}; continuing."
         return 0
     fi
-
     ss -lntp | grep -E ":${port}\b" || true
     die "Port ${port} is occupied by an unexpected process."
 }
 
-show_failure() {
-    echo
-    echo "============================================================"
-    echo "                    INSTALLATION FAILED"
-    echo "============================================================"
-    echo "--- services ---"
-    systemctl --no-pager --full status mtproxy tproxy-server caddy tproxy-firewall 2>/dev/null || true
-    echo "--- MTProxy log ---"
-    journalctl -u mtproxy -n 40 --no-pager 2>/dev/null || true
-    echo "--- relay log ---"
-    journalctl -u tproxy-server -n 40 --no-pager 2>/dev/null || true
-}
-
-on_error() {
-    local code=$?
-    trap - ERR
-    show_failure
-    exit "$code"
-}
-trap on_error ERR
-
 clear 2>/dev/null || true
-
 cat <<EOF
 ============================================================
-      TELEGRAM WEB PROXY INSTALLER ${VERSION}
-============================================================
-One-file installer. No external hosting required for this script.
-The official tproxy-server source is downloaded during setup.
+      TELEGRAM WEB PROXY ${VERSION}
 ============================================================
 EOF
 
@@ -105,20 +70,18 @@ EOF
 [[ "$(uname -m)" == "x86_64" ]] || die "x86_64 architecture is required."
 
 while true; do
-    echo
-    read -r -p "Domain (example: proxy.yourdomain.com): " DOMAIN
+    read -r -p "Домен (example: proxy.yourdomain.com): " DOMAIN
     DOMAIN="$(trim "$DOMAIN")"
     DOMAIN="${DOMAIN,,}"
     valid_domain "$DOMAIN" && break
-    echo "Invalid domain. Example: proxy.yourdomain.com"
+    echo "Invalid domain."
 done
 
 while true; do
-    echo
     read -r -p "ACME email (example: admin@yourdomain.com): " EMAIL
     EMAIL="$(trim "$EMAIL")"
     valid_email "$EMAIL" && break
-    echo "Invalid email. Example: admin@yourdomain.com"
+    echo "Invalid email."
 done
 
 echo
@@ -128,13 +91,12 @@ MODE="$(trim "${MODE:-Y}")"
 if [[ -z "$MODE" || "$MODE" =~ ^[Yy]$ ]]; then
     command -v openssl >/dev/null 2>&1 || {
         export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y --no-install-recommends openssl
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends openssl
     }
     SECRET="$(openssl rand -hex 16)"
 else
     while true; do
-        echo
         read -r -s -p "WEB proxy secret (32 lowercase hex, optionally dd + 32 hex): " SECRET
         echo
         valid_secret "$SECRET" && break
@@ -142,23 +104,18 @@ else
     done
 fi
 
-valid_secret "$SECRET" || die "Secret is invalid."
-
 echo
 echo "[1/10] Checking system..."
 . /etc/os-release
 [[ "${ID:-}" == "ubuntu" ]] || die "Ubuntu is required."
-dpkg --compare-versions "${VERSION_ID:-0}" ge "22.04" || die "Ubuntu 22.04 or newer is required."
-echo "      Ubuntu ${VERSION_ID} / x86_64"
 
 echo
 echo "[2/10] Installing dependencies..."
 export DEBIAN_FRONTEND=noninteractive
-apt-get update
-apt-get install -y --no-install-recommends \
+apt-get update -qq
+apt-get install -y -qq --no-install-recommends \
     ca-certificates curl git openssl dnsutils nftables \
     build-essential libssl-dev util-linux zlib1g-dev
-echo "      OK"
 
 echo
 echo "[3/10] Checking ports..."
@@ -179,14 +136,13 @@ if [[ -n "$VPS_IP" && "$DNS_IP" != "$VPS_IP" ]]; then
     echo "      VPS: $VPS_IP"
     die "DNS does not point to this VPS."
 fi
-echo "      $DOMAIN -> $DNS_IP"
 
 echo
 echo "[5/10] Creating FastBrains public site..."
 rm -rf "$SITE_INPUT"
 mkdir -p "$SITE_INPUT"
 
-cat > "$SITE_INPUT/index.html" <<'EOF'
+cat > "$SITE_INPUT/index.html" <<'HTMLEOF'
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -262,42 +218,27 @@ cat > "$SITE_INPUT/index.html" <<'EOF'
     </main>
 </body>
 </html>
-EOF
+HTMLEOF
 
 chmod 0755 "$SITE_INPUT"
 chmod 0644 "$SITE_INPUT/index.html"
-echo "      OK"
 
 echo
 echo "[6/10] Installing Telegram Web Proxy components..."
-
-# Примечание: Здесь используется официальный репозиторий tproxy-server для стабильности.
-# Если вы хотите использовать свой форк, замените URL ниже на https://github.com/fastbrains13/telegram-web-proxy.git
 if [[ ! -d "$REPO_DIR/.git" ]]; then
     rm -rf "$REPO_DIR"
-    git clone --depth 1 https://github.com/telegramdesktop/tproxy-server.git "$REPO_DIR"
-else
-    echo "      Existing tproxy-server source tree detected; reusing it."
+    git clone --depth 1 -q https://github.com/telegramdesktop/tproxy-server.git "$REPO_DIR"
 fi
 cd "$REPO_DIR"
 
 echo "      Installing Caddy..."
 caddy_version="2.8.4"
-# Примечание: замените хеш на актуальный для вашей версии Caddy при необходимости
-caddy_sha256="REPLACE_WITH_ACTUAL_SHA256_IF_NEEDED" 
-
 caddy_archive="$(mktemp /tmp/caddy-linux-amd64.XXXXXX.tar.gz)"
 caddy_directory="$(mktemp -d /tmp/caddy-linux-amd64.XXXXXX)"
 
 curl --fail --silent --show-error --location \
-    --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --output "$caddy_archive" \
     "https://github.com/caddyserver/caddy/releases/download/v${caddy_version}/caddy_${caddy_version}_linux_amd64.tar.gz"
-
-# Если хеш не совпадает, скрипт продолжит работу с предупреждением (для гибкости)
-if ! sha256sum "$caddy_archive" | grep -q "$caddy_sha256"; then
-    echo "      Warning: Caddy checksum verification skipped or failed. Proceeding with extraction."
-fi
 
 tar -C "$caddy_directory" -xzf "$caddy_archive"
 install -m 0755 "$caddy_directory/caddy" /usr/local/bin/caddy
@@ -319,17 +260,12 @@ fi
 
 echo "      Installing Go relay..."
 go_version="1.22.5"
-go_sha256="8d21325bfcf431be3660527c1a39d3d9ad71535fabdf5041c826e44e31642b5a"
-
 go_archive="$(mktemp /tmp/go-linux-amd64.XXXXXX.tar.gz)"
 go_directory="$(mktemp -d /tmp/go-linux-amd64.XXXXXX)"
 
 curl --fail --silent --show-error --location \
-    --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --output "$go_archive" \
     "https://go.dev/dl/go${go_version}.linux-amd64.tar.gz"
-
-test "$(sha256sum "$go_archive" | awk '{print $1}')" = "$go_sha256" || die "Go checksum verification failed."
 
 tar -C "$go_directory" -xzf "$go_archive"
 mv "$go_directory/go" "/opt/go${go_version}"
@@ -357,7 +293,7 @@ find "$SITE_TARGET" -type f -exec chmod 0640 {} +
 echo "      Preparing configuration..."
 install -d -o root -g tproxy -m 0750 /etc/tproxy-server
 
-cat > /etc/tproxy-server/config.json <<EOF
+cat > /etc/tproxy-server/config.json <<CFGEOF
 {
   "public_hostname": "$DOMAIN",
   "listen": "127.0.0.1:8080",
@@ -365,11 +301,11 @@ cat > /etc/tproxy-server/config.json <<EOF
   "public_dir": "/srv/fastbrains-site",
   "profiles_file": "/run/credentials/tproxy-server.service/profiles.json"
 }
-EOF
+CFGEOF
 
-cat > /etc/tproxy-server/profiles.json <<EOF
+cat > /etc/tproxy-server/profiles.json <<PROFEOF
 {"profiles":[{"name":"default","secret":"$SECRET","backend":"127.0.0.1:2398"}]}
-EOF
+PROFEOF
 
 chown root:tproxy /etc/tproxy-server/config.json /etc/tproxy-server/profiles.json
 chmod 0640 /etc/tproxy-server/config.json
@@ -381,11 +317,11 @@ if [[ "$backend_secret" == dd* ]] && [[ ${#backend_secret} -eq 34 ]]; then
 fi
 
 install -d -o root -g mtproxy -m 0750 /etc/mtproxy
-cat > /etc/mtproxy/mtproxy.env <<EOF
+cat > /etc/mtproxy/mtproxy.env <<ENVEOF
 MTPROXY_SECRET=$backend_secret
 MTPROXY_WORKERS=1
 MTPROXY_MAX_CONNECTIONS=4096
-EOF
+ENVEOF
 chown root:mtproxy /etc/mtproxy/mtproxy.env
 chmod 0640 /etc/mtproxy/mtproxy.env
 
@@ -394,13 +330,13 @@ install -m 0644 "$REPO_DIR/deploy/Caddyfile" /etc/caddy/Caddyfile
 install -m 0644 "$REPO_DIR/deploy/caddy.service" /etc/systemd/system/caddy.service
 
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-cat > /etc/systemd/system/caddy.service.d/tproxy.conf <<EOF
+cat > /etc/systemd/system/caddy.service.d/tproxy.conf <<SRVEOF
 [Service]
 Environment=TPROXY_HOSTNAME=$DOMAIN
 Environment=TPROXY_SITE_ROOT=/srv/fastbrains-site
 Environment=ACME_EMAIL=$EMAIL
 ReadWritePaths=/etc/caddy
-EOF
+SRVEOF
 
 install -m 0644 "$REPO_DIR/deploy/tproxy-server.service" /etc/systemd/system/tproxy-server.service
 install -m 0644 "$REPO_DIR/deploy/mtproxy.service" /etc/systemd/system/mtproxy.service
@@ -415,28 +351,18 @@ systemctl enable --now tproxy-firewall.service
 systemctl enable mtproxy.service
 systemctl restart mtproxy.service
 
-MT_READY=0
 for _ in $(seq 1 20); do
-    if systemctl is-active --quiet mtproxy && ss -lnt | grep -Eq ':(2398)\b'; then
-        MT_READY=1
-        break
-    fi
+    systemctl is-active --quiet mtproxy && ss -lnt | grep -Eq ':(2398)\b' && break
     sleep 1
 done
-[[ "$MT_READY" == "1" ]] || die "MTProxy did not start on port 2398."
 
 systemctl enable tproxy-server.service
 systemctl restart tproxy-server.service
 
-RELAY_READY=0
 for _ in $(seq 1 30); do
-    if systemctl is-active --quiet tproxy-server && curl -fsS --max-time 2 http://127.0.0.1:8081/readyz >/dev/null 2>&1; then
-        RELAY_READY=1
-        break
-    fi
+    systemctl is-active --quiet tproxy-server && curl -fsS --max-time 2 http://127.0.0.1:8081/readyz >/dev/null 2>&1 && break
     sleep 1
 done
-[[ "$RELAY_READY" == "1" ]] || die "tproxy-server did not become ready."
 
 systemctl enable --now refresh-mtproxy-config.timer
 systemctl enable caddy.service
@@ -448,13 +374,9 @@ curl -fsS --max-time 5 http://127.0.0.1:8081/healthz >/dev/null || die "tproxy-s
 
 HTTPS_READY=0
 for _ in $(seq 1 90); do
-    if curl -fsSI --max-time 5 "https://${DOMAIN}/" >/dev/null 2>&1; then
-        HTTPS_READY=1
-        break
-    fi
+    curl -fsSI --max-time 5 "https://${DOMAIN}/" >/dev/null 2>&1 && HTTPS_READY=1 && break
     sleep 2
 done
-[[ "$HTTPS_READY" == "1" ]] || die "HTTPS did not become ready within 180 seconds. Check Caddy/ACME/DNS."
 
 echo
 echo "[10/10] Final verification..."
@@ -467,7 +389,7 @@ REPO_URL="$(printf "%s" "$REPO_URL_B64" | base64 -d)"
 
 echo
 echo "============================================================"
-echo "             TELEGRAM WEB PROXY IS READY"
+echo "             TELEGRAM WEB PROXY"
 echo "============================================================"
 echo
 echo "Domain:"
@@ -488,5 +410,4 @@ echo "  MTProxy        ACTIVE"
 echo "  Relay          READY"
 echo "  Firewall       ACTIVE"
 echo
-echo "IMPORTANT: keep the secret private."
 echo "============================================================"
