@@ -1,4 +1,4 @@
-# ⚡ Telegram Web Proxy
+# ⚡ Настраиваем Web Proxy Telegram одной командой
 
 Автоматическая установка Telegram Web Proxy на новый VPS.
 
