@@ -13,13 +13,17 @@
 
 ## 1. Рекомендуемые сервера у следующих провайдеров
 
+[Play2go](https://play2go.cloud/?ref_id=jGD2_v4IsE8)
+
 [Firstbyte](https://firstbyte.ru/?from=28204)
+
+[SmartApe](http://www.smartape.ru/?partner=77444)
 
 [VDSka](https://vdska.ru/?p=36069)
 
-[VDSina](https://www.vdsina.com/?partner=b2m2e7hc7jnk) (скидка 10% при покупке сервера)
+[Timeweb](https://timeweb.cloud/r/cc38309) (можно получить бонус до 2000₽)
 
-[SmartApe](http://www.smartape.ru/?partner=77444)
+[VDSina](https://www.vdsina.com/?partner=b2m2e7hc7jnk) 
 
 ## 2. Требования к VPS
 
