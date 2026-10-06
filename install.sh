@@ -1,4 +1,3 @@
-cat << 'EOF' > /root/install.sh
 #!/bin/bash
 
 echo "=========================================================="
@@ -153,4 +152,4 @@ echo ""
 echo " 🔗 Ссылка для быстрого подключения (откройте в Telegram):"
 echo " https://t.me/webproxy?server=$DOMAIN&secret=$SECRET"
 echo "=========================================================="
-EOF
+
