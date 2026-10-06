@@ -11,7 +11,11 @@
 
 > ⚠️ **ВНИМАНИЕ**: Скрипт находится в стадии активного развития. Все риски и ответственность полностью на ваших плечах
 
+<a href="https://beget.com/?id=2700620" target="_blank"><img src="https://cp.beget.com/promo_data/static/970x90-2.png" border="0"></a>
+
 ## 1. Рекомендуемые сервера у следующих провайдеров
+
+[Beget](beget.com/p2700620)
 
 [Play2go](https://play2go.cloud/?ref_id=jGD2_v4IsE8)
 
