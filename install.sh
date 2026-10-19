@@ -210,6 +210,7 @@ apt install -y -qq caddy
 
 cat <<CADDYEOF > /etc/caddy/Caddyfile
 $DOMAIN {
+    tls $EMAIL
     reverse_proxy 127.0.0.1:8080 {
         transport http {
             response_header_timeout 40s
@@ -233,6 +234,10 @@ echo "🚀 Регистрация и запуск служб..."
 cp deploy/tproxy-server.service /etc/systemd/system/
 cp deploy/mtproxy.service /etc/systemd/system/
 
+# Удаление отсутствующей зависимости tproxy-firewall.service
+sed -i '/tproxy-firewall.service/d' /etc/systemd/system/tproxy-server.service
+sed -i '/tproxy-firewall.service/d' /etc/systemd/system/mtproxy.service
+
 systemctl daemon-reload
 systemctl enable mtproxy tproxy-server caddy
 systemctl restart mtproxy tproxy-server caddy
@@ -243,7 +248,7 @@ echo "=========================================================="
 echo " ✅ УСТАНОВКА УСПЕШНО ЗАВЕРШЕНА!"
 echo "=========================================================="
 echo " 📌 Данные для подключения в Telegram:"
-echo "    Тип прокси : WEB Proxy (или MTProto Web)"
+echo "    Тип прокси : WEB Proxy
 echo "    Хост       : $DOMAIN"
 echo "    Порт       : 443"
 echo "    Секрет     : $SECRET"
