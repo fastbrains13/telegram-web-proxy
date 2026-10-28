@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 echo "=========================================================="
 echo " 🚀 Полная установка tproxy-server (Telegram WEB Proxy)"
@@ -242,7 +243,20 @@ systemctl daemon-reload
 systemctl enable mtproxy tproxy-server caddy
 systemctl restart mtproxy tproxy-server caddy
 
-# 13. Финал
+# 13. Health check
+for _ in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8081/healthz >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8081/readyz >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
+if ! curl -fsS http://127.0.0.1:8081/healthz >/dev/null 2>&1 || ! curl -fsS http://127.0.0.1:8081/readyz >/dev/null 2>&1; then
+  echo "❌ Ошибка: сервис не ответил на health-check на 127.0.0.1:8081/healthz и /readyz"
+  exit 1
+fi
+
+# 14. Финал
 echo ""
 echo "=========================================================="
 echo " ✅ УСТАНОВКА УСПЕШНО ЗАВЕРШЕНА!"
